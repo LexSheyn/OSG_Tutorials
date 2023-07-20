@@ -1,0 +1,30 @@
+{
+    "files.associations": {
+        "drawable": "cpp",
+        "matrix": "cpp",
+        "matrixd": "cpp",
+        "vec3": "cpp",
+        "vec3f": "cpp",
+        "referenced": "cpp",
+        "transform": "cpp",
+        "nodevisitor": "cpp",
+        "matrixf": "cpp",
+        "readfile": "cpp",
+        "copyop": "cpp",
+        "notify": "cpp",
+        "ref_ptr": "cpp",
+        "node": "cpp",
+        "matrixtransform": "cpp",
+        "observer_ptr": "cpp",
+        "boundingbox": "cpp",
+        "boundingsphere": "cpp",
+        "group": "cpp",
+        "positionattitudetransform": "cpp",
+        "quat": "cpp",
+        "array": "cpp",
+        "polygonmode": "cpp",
+        "stateattribute": "cpp",
+        "cullface": "cpp",
+        "stateset": "cpp"
+    }
+}
