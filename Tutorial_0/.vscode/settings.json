@@ -25,6 +25,7 @@
         "polygonmode": "cpp",
         "stateattribute": "cpp",
         "cullface": "cpp",
-        "stateset": "cpp"
+        "stateset": "cpp",
+        "fog": "cpp"
     }
 }

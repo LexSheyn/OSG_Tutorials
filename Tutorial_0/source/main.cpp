@@ -1,55 +1,78 @@
-// Page:    129
+// Page:    137
 // Chapter: 6
-// Time for action – lighting the glider or not
+// Time for action – creating light sources in the scene
 
-// We will show the usage of the OVERRIDE and PROTECTED flags in the following short
-// example. The root node will be set to OVERRIDE, in order to force all choldren to inherit
-// its attribute or mode. Meanwhile, the choldren will try to change their inheritance with or
-// without a PROTECTED flag, which will lead to different results.
+// By default, OSG automatically turns on the first light (GL_LIGHT0) and gives the scene a soft,
+// directional light. However, this time we will create multiple lights by ourselves, and move
+// them with transformation parent nodex. Be aware: only position lights can be translated.
+// A directional light has no origin and cannot be placed anywhere.
+// OpenGL and OSG both use the fourth component of the position parameter to decide if
+// a light is a point light. That is to say, if the fourth component is 0, the light is treated as a
+// directional source; otherwise it is positional.
 
 #include "base.h"
 
-#include <osg/PolygonMode>
 #include <osg/MatrixTransform>
+#include <osg/LightSource>
 #include <osgDB/ReadFile>
 #include <osgViewer/Viewer>
 
+// We create a function to create light sources for the scene graph. A light source
+// should have a number (rangin from 0 to 7), a translation position, and a color
+// paremeter. A point light is created because the fourth part of the position vector
+// is 1.0. After that, we assign the light to a wenly-created osg::LightSource
+// node, and add the light source to a translated osg::MatrixTransform node,
+// which is then returned.
+
+osg::Node* createLightSource(
+    uint32_t         number,
+    const osg::Vec3& translation,
+    const osg::Vec4& color
+)
+{
+    osg::ref_ptr<osg::Light> light = new osg::Light();
+
+    light->setLightNum(number);
+    light->setDiffuse(color);
+    light->setPosition(osg::Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+
+    osg::ref_ptr<osg::LightSource> lightSource = new osg::LightSource();
+
+    lightSource->setLight(light.get());
+
+    osg::ref_ptr<osg::MatrixTransform> sourceTransform = new osg::MatrixTransform();
+
+    sourceTransform->setMatrix(osg::Matrix::translate(translation));
+    sourceTransform->addChild(lightSource.get());
+
+    return sourceTransform.release();
+}
+
 int32_t main(int32_t argc, char** argv)
 {
-    // Create two osg::MatrixTransform nodes and make them both share a glider
-    // model. After all, we don't want to use the well-known cessna all the time. The glider
-    // is small in size, so only a small distance is required for the setMatrix() method.
-
-    osg::ref_ptr<osg::Node> model = osgDB::readNodeFile(MODEL_DIR"glider.osg");
-
-    osg::ref_ptr<osg::MatrixTransform> transform0 = new osg::MatrixTransform();
-
-    transform0->setMatrix(osg::Matrix::translate(-0.5, 0.0f, 0.0f));
-    transform0->addChild(model.get());
-
-    osg::ref_ptr<osg::MatrixTransform> transform1 = new osg::MatrixTransform();
-
-    transform1->setMatrix(osg::Matrix::translate(0.5f, 0.0f, 0.0f));
-    transform1->addChild(model.get());
+    osg::ref_ptr<osg::Node> model = osgDB::readNodeFile(MODEL_DIR"cessna.osg");
 
     osg::ref_ptr<osg::Group> root = new osg::Group();
 
-    root->addChild(transform0);
-    root->addChild(transform1);
+    root->addChild(model.get());
 
-    // Now we are going to set the rendering mode of each node's state sett. The
-    // GL_LIGHTING mode is a famous OpenGL enumeration which can be used to
-    // enable or disable global lighting of the scene. Note that OVERRIDE and
-    // PROTECTED flags are set to root and transformation1 separately, along
-    // with an ON or OFF switch value.
+    // No it's time to construct two light source nodes and put them at different
+    // positions in the scene.
 
-    osg::StateSet* stateSet0 = transform0->getOrCreateStateSet();
-    osg::StateSet* stateSet1 = transform1->getOrCreateStateSet();
+    osg::Node* lightSource0 = createLightSource(0, osg::Vec3(-20.0f, 0.0f, 0.0f), osg::Vec4(1.0f, 1.0f, 0.0f, 1.0f));
+    osg::Node* lightSource1 = createLightSource(1, osg::Vec3(0.0f, -20.0f, 0.0f), osg::Vec4(0.0f, 1.0f, 1.0f, 1.0f));
+
+    // The light numbers 0 and 1 used here. So we will turn on modes GL_LIGHT0
+    // and GL_LIGHT1 of the root node, which means that all nodes in the scene graph
+    // could benefit from the two warm light sources.
+
     osg::StateSet* rootStateSet = root->getOrCreateStateSet();
 
-    stateSet0->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
-    stateSet1->setMode(GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::PROTECTED);
-    rootStateSet->setMode(GL_LIGHTING, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
+    rootStateSet->setMode(GL_LIGHT0, osg::StateAttribute::ON);
+    rootStateSet->setMode(GL_LIGHT1, osg::StateAttribute::ON);
+
+    root->addChild(lightSource0);
+    root->addChild(lightSource1);
 
     osgViewer::Viewer viewer;
 
