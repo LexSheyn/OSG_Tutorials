@@ -1,13 +1,15 @@
-// Page:    143
+// Page:    148
 // Chapter: 6
-// Time for action – loading and applying 2D textures
+// Time for action – achieving the translucent effect
 
-// The most common texture mapping technique is 2D texture mapping. This accepts a 2D image
-// as the texture and maps it onto one or more geonetry surfaces. The osg::Texture2D class is
-// used here as a texture attribute of a specific texture mapping unit.
+// We are going to implement a common translucent effect that treats a model as glass. Any
+// other scene objects can be displayed though the glass object. This can be done with the
+// OpenGL blending mechanism, but it is important to calculate the corrent rendering order of
+// scene objects in this case.
 
 #include "base.h"
 
+#include <osg/BlendFunc>
 #include <osg/Texture2D>
 #include <osg/Geometry>
 #include <osgDB/ReadFile>
@@ -15,9 +17,9 @@
 
 int32_t main(int32_t argc, char** argv)
 {
-    // We will quickly create a quad and call the setTextCoordArray() method to
-    // bind texture coordinates per vertex. The texture coordinate array only affects the
-    // texture unit 0 in the example, but it is always possible to share arrays among units.
+    // We will continue using the quad geometry with a predefined texture coordinate
+    // array. It should be treated as translucent object and the blending attribute
+    // and modes should be applied later.
 
     osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array();
 
@@ -37,29 +39,51 @@ int32_t main(int32_t argc, char** argv)
     texCoords->push_back(osg::Vec2(1.0f, 1.0f));
     texCoords->push_back(osg::Vec2(0.0f, 1.0f));
 
-    osg::ref_ptr<osg::DrawArrays> primitiveSet = new osg::DrawArrays(GL_QUADS, 0, 4);
+    // Be careful to set the color array of the quad. To blend it with other scene
+    // objects, we have to set the alpha component to a value of less than 1.0 here.
+
+    osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array();
+
+    colors->push_back(osg::Vec4(1.0f, 1.0f, 1.0f, 0.5f));
+
+    osg::ref_ptr<osg::DrawArrays> primitiveSet = new osg::DrawArrays(osg::DrawArrays::QUADS, 0, 4);
 
     osg::ref_ptr<osg::Geometry> quad = new osg::Geometry();
 
     quad->setVertexArray(vertices.get());
     quad->setNormalArray(normals.get());
     quad->setNormalBinding(osg::Geometry::BIND_OVERALL);
+    quad->setColorArray(colors.get());
+    quad->setColorBinding(osg::Geometry::BIND_OVERALL);
     quad->setTexCoordArray(0, texCoords.get());
     quad->addPrimitiveSet(primitiveSet.get());
 
+    osg::ref_ptr<osg::Geode> geode = new osg::Geode();
+
+    geode->addDrawable(quad.get());
+
     osg::ref_ptr<osg::Texture2D> texture = new osg::Texture2D();
     osg::ref_ptr<osg::Image> image = osgDB::readImageFile(IMAGE_DIR"lz.rgb");
-    //osg::ref_ptr<osg::Image> image = osgDB::readImageFile(IMAGE_DIR"winter_house.jpg");
 
     texture->setImage(image.get());
 
-    osg::ref_ptr<osg::Geode> root = new osg::Geode();
+    // Use the osg::BlendFunc class to implement the blending effect.
+    // It works exactly the same as OpenGL's glBlendFunc().
 
-    root->addDrawable(quad.get());
-    
-    osg::StateSet* rootStateSet = root->getOrCreateStateSet();
+    osg::ref_ptr<osg::BlendFunc> blendFunction = new osg::BlendFunc();
 
-    rootStateSet->setTextureAttributeAndModes(0, texture.get());
+    blendFunction->setFunction(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    osg::StateSet* stateSet = geode->getOrCreateStateSet();
+
+    stateSet->setTextureAttributeAndModes(0, texture.get());
+    stateSet->setAttributeAndModes(blendFunction.get());
+    stateSet->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
+
+    osg::ref_ptr<osg::Group> root = new osg::Group();
+
+    root->addChild(geode.get());
+    root->addChild(osgDB::readNodeFile(MODEL_DIR"glider.osg"));
 
     osgViewer::Viewer viewer;
 
