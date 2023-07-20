@@ -1,78 +1,65 @@
-// Page:    137
+// Page:    143
 // Chapter: 6
-// Time for action – creating light sources in the scene
+// Time for action – loading and applying 2D textures
 
-// By default, OSG automatically turns on the first light (GL_LIGHT0) and gives the scene a soft,
-// directional light. However, this time we will create multiple lights by ourselves, and move
-// them with transformation parent nodex. Be aware: only position lights can be translated.
-// A directional light has no origin and cannot be placed anywhere.
-// OpenGL and OSG both use the fourth component of the position parameter to decide if
-// a light is a point light. That is to say, if the fourth component is 0, the light is treated as a
-// directional source; otherwise it is positional.
+// The most common texture mapping technique is 2D texture mapping. This accepts a 2D image
+// as the texture and maps it onto one or more geonetry surfaces. The osg::Texture2D class is
+// used here as a texture attribute of a specific texture mapping unit.
 
 #include "base.h"
 
-#include <osg/MatrixTransform>
-#include <osg/LightSource>
+#include <osg/Texture2D>
+#include <osg/Geometry>
 #include <osgDB/ReadFile>
 #include <osgViewer/Viewer>
 
-// We create a function to create light sources for the scene graph. A light source
-// should have a number (rangin from 0 to 7), a translation position, and a color
-// paremeter. A point light is created because the fourth part of the position vector
-// is 1.0. After that, we assign the light to a wenly-created osg::LightSource
-// node, and add the light source to a translated osg::MatrixTransform node,
-// which is then returned.
-
-osg::Node* createLightSource(
-    uint32_t         number,
-    const osg::Vec3& translation,
-    const osg::Vec4& color
-)
-{
-    osg::ref_ptr<osg::Light> light = new osg::Light();
-
-    light->setLightNum(number);
-    light->setDiffuse(color);
-    light->setPosition(osg::Vec4(0.0f, 0.0f, 0.0f, 1.0f));
-
-    osg::ref_ptr<osg::LightSource> lightSource = new osg::LightSource();
-
-    lightSource->setLight(light.get());
-
-    osg::ref_ptr<osg::MatrixTransform> sourceTransform = new osg::MatrixTransform();
-
-    sourceTransform->setMatrix(osg::Matrix::translate(translation));
-    sourceTransform->addChild(lightSource.get());
-
-    return sourceTransform.release();
-}
-
 int32_t main(int32_t argc, char** argv)
 {
-    osg::ref_ptr<osg::Node> model = osgDB::readNodeFile(MODEL_DIR"cessna.osg");
+    // We will quickly create a quad and call the setTextCoordArray() method to
+    // bind texture coordinates per vertex. The texture coordinate array only affects the
+    // texture unit 0 in the example, but it is always possible to share arrays among units.
 
-    osg::ref_ptr<osg::Group> root = new osg::Group();
+    osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array();
 
-    root->addChild(model.get());
+    vertices->push_back(osg::Vec3(-0.5f, 0.0f, -0.5f));
+    vertices->push_back(osg::Vec3( 0.5f, 0.0f, -0.5f));
+    vertices->push_back(osg::Vec3( 0.5f, 0.0f,  0.5f));
+    vertices->push_back(osg::Vec3(-0.5f, 0.0f,  0.5f));
 
-    // No it's time to construct two light source nodes and put them at different
-    // positions in the scene.
+    osg::ref_ptr<osg::Vec3Array> normals = new osg::Vec3Array();
 
-    osg::Node* lightSource0 = createLightSource(0, osg::Vec3(-20.0f, 0.0f, 0.0f), osg::Vec4(1.0f, 1.0f, 0.0f, 1.0f));
-    osg::Node* lightSource1 = createLightSource(1, osg::Vec3(0.0f, -20.0f, 0.0f), osg::Vec4(0.0f, 1.0f, 1.0f, 1.0f));
+    normals->push_back(osg::Vec3(0.0f, -1.0f, 0.0f));
 
-    // The light numbers 0 and 1 used here. So we will turn on modes GL_LIGHT0
-    // and GL_LIGHT1 of the root node, which means that all nodes in the scene graph
-    // could benefit from the two warm light sources.
+    osg::ref_ptr<osg::Vec2Array> texCoords = new osg::Vec2Array();
 
+    texCoords->push_back(osg::Vec2(0.0f, 0.0f));
+    texCoords->push_back(osg::Vec2(1.0f, 0.0f));
+    texCoords->push_back(osg::Vec2(1.0f, 1.0f));
+    texCoords->push_back(osg::Vec2(0.0f, 1.0f));
+
+    osg::ref_ptr<osg::DrawArrays> primitiveSet = new osg::DrawArrays(GL_QUADS, 0, 4);
+
+    osg::ref_ptr<osg::Geometry> quad = new osg::Geometry();
+
+    quad->setVertexArray(vertices.get());
+    quad->setNormalArray(normals.get());
+    quad->setNormalBinding(osg::Geometry::BIND_OVERALL);
+    quad->setTexCoordArray(0, texCoords.get());
+    quad->addPrimitiveSet(primitiveSet.get());
+
+    osg::ref_ptr<osg::Texture2D> texture = new osg::Texture2D();
+    osg::ref_ptr<osg::Image> image = osgDB::readImageFile(IMAGE_DIR"lz.rgb");
+    //osg::ref_ptr<osg::Image> image = osgDB::readImageFile(IMAGE_DIR"winter_house.jpg");
+
+    texture->setImage(image.get());
+
+    osg::ref_ptr<osg::Geode> root = new osg::Geode();
+
+    root->addDrawable(quad.get());
+    
     osg::StateSet* rootStateSet = root->getOrCreateStateSet();
 
-    rootStateSet->setMode(GL_LIGHT0, osg::StateAttribute::ON);
-    rootStateSet->setMode(GL_LIGHT1, osg::StateAttribute::ON);
-
-    root->addChild(lightSource0);
-    root->addChild(lightSource1);
+    rootStateSet->setTextureAttributeAndModes(0, texture.get());
 
     osgViewer::Viewer viewer;
 

@@ -5,3 +5,4 @@ typedef double float64_t;
 #include <iostream>
 
 #define MODEL_DIR "/home/user/Models/"
+#define IMAGE_DIR MODEL_DIR"Images/"

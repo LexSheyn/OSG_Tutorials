@@ -26,6 +26,8 @@
         "stateattribute": "cpp",
         "cullface": "cpp",
         "stateset": "cpp",
-        "fog": "cpp"
+        "fog": "cpp",
+        "primitiveset": "cpp",
+        "mixinvector": "cpp"
     }
 }
