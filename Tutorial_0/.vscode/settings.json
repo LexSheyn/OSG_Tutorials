@@ -92,6 +92,22 @@
         "light": "cpp",
         "program": "cpp",
         "vec4f": "cpp",
-        "uniform": "cpp"
+        "uniform": "cpp",
+        "coordinatesystemnode": "cpp",
+        "object": "cpp",
+        "shape": "cpp",
+        "geode": "cpp",
+        "callback": "cpp",
+        "camera": "cpp",
+        "viewer": "cpp",
+        "viewerbase": "cpp",
+        "view": "cpp",
+        "trackballmanipulator": "cpp",
+        "scene": "cpp",
+        "graphicswindow": "cpp",
+        "singlescreen": "cpp",
+        "compositeviewer": "cpp",
+        "displaysettings": "cpp",
+        "texture": "cpp"
     }
 }
