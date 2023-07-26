@@ -1,185 +1,202 @@
-// Page:    186
-// Chapter: 7
-// Time for action – drawing aircrafts on a loaded terrain
+// Page:    245
+// Chapter: 9
+// Time for action – clicking and selecting geometries
 
-// In this section, we are going to integrate what we learned before to create a slightly
-// complex exmaple, which identifies all texture objects in a scene graph by using the
-// osg::NodeVisitor utility, replaces them with a newly created shared texture, and binds
-// the new texture to a render-to-texture camera. The texture is expected to represent more
-// than a static image, so a customized simulation loop will be used to animate the sub-scene
-// graph before calling the frame() method.
+// Our task this time is to implement a very common task in 3D software - clicking to select
+// an object in the world and showing a selection box around the object. The bounding
+// box of the selected geometry sould be good for representing a selection box, and the
+// osg::ShapeDrawable class can quickly generate a simple box for display purposes.
+// The osg::PolygonMode attribute will then make the rendering pipeline only draw the
+// wireframe of the box, which helps to show the selection box as brackets. These are all we
+// need to produce practical picking object functionalities.
 
 #include "base.h"
 
-#include <osg/Camera>
-#include <osg/Texture2D>
+#include <osg/MatrixTransform>
+#include <osg/ShapeDrawable>
+#include <osg/PolygonMode>
 #include <osgDB/ReadFile>
-#include <osgGA/TrackballManipulator>
+#include <osgUtil/LineSegmentIntersector>
 #include <osgViewer/Viewer>
 
-// The first task is to look for any textures applied to a loaded model. We have to
-// derive a FindTextureVisitor from the osg::NodeVisitor base class. This
-// Manages a texture object, which will be used for render-to-texture operation later.
-// Every time we find an existing texture in the scene graph, we replace it with the
-// managed one. This is implemented in the replaceTexture() method.
-//
-// In apply() method, call replaceTexture() on each node and drawable to
-// see if there are any textures stored. Remember to call traverse() at the end of
-// each method body to continue going though the scene graph.
-//
-// The user method uses getTextureAttribute() to obtain the texture in unit
-// 0 from the input stat set, and replace it with the managed one. Because the
-// state set is obtained via the getStateSet() method of node or drawable, not
-// getOrCreateStateSet() which is sure to return an existin or new state set
-// object, the input pointer may be null here.
+// The PickHandler will do everything required fro our task, including an
+// intersection test of the mouse cursor and the scene graph, creating and returning
+// the selection box node (the m_selectionBox variable in this example), and
+// transforming the box around the selected object when pressing the mouse button.
 
-class FindTextureVisitor : public osg::NodeVisitor
+class PickHandler : public osgGA::GUIEventHandler
 {
 public:
-    FindTextureVisitor(osg::Texture* p_texture)
-    : m_texture (p_texture)
+
+    void createSelectionBox()
     {
-        this->setTraversalMode(osg::NodeVisitor::TRAVERSE_ALL_CHILDREN);
+        osg::Box* box = new osg::Box(osg::Vec3(), 1.0f);
+
+        osg::ShapeDrawable* boxDrawable = new osg::ShapeDrawable(box);
+
+        osg::ref_ptr<osg::Geode> geode = new osg::Geode();
+
+        geode->addDrawable(boxDrawable);
+
+        m_switch = new osg::Switch();
+
+        m_selectionBox = new osg::MatrixTransform();
+
+        m_switch->addChild(m_selectionBox.get());
+        
+        m_selectionBox->setNodeMask(0x1);
+        m_selectionBox->addChild(geode.get());
+
+        osg::PolygonMode* polygonMode = new osg::PolygonMode(osg::PolygonMode::FRONT_AND_BACK, osg::PolygonMode::LINE);
+
+        osg::StateSet* stateSet = m_selectionBox->getOrCreateStateSet();
+
+        stateSet->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+        stateSet->setAttributeAndModes(polygonMode);
     }
 
-    virtual void apply(osg::Node& node) override
+    osg::Node* getSelectionBox()
     {
-        this->replaceTexture(node.getStateSet());
-
-        this->traverse(node);
+        return m_switch;
     }
 
-    virtual void apply(osg::Geode& geode) override
+    // In the following method, we will allocate and return a valid selection box
+    // node to the main function. There are several points to note here: firstly, the
+    // osg::Box object will not be changed at runtime, but a parent transformation
+    // node will be used and modified instead, for the reason of simplifying
+    // operations; secondly, the GL_LIGHTING mode and the osg::PolygonMode
+    // attribute should be used to make the selection box more natural; finally, there
+    // is also a confusing setNodeMask() call, which will be explained later.
+    osg::Node* getOrCreateSelectionBox()
     {
-        this->replaceTexture(geode.getStateSet());
-
-        for (uint32_t i = 0; i < geode.getNumDrawables(); ++i)
+        if (!m_selectionBox)
         {
-            this->replaceTexture(geode.getDrawable(i)->getStateSet());
+            osg::Box* box = new osg::Box(osg::Vec3(), 1.0f);
+
+            osg::ShapeDrawable* boxDrawable = new osg::ShapeDrawable(box);
+
+            osg::ref_ptr<osg::Geode> geode = new osg::Geode();
+
+            geode->addDrawable(boxDrawable);
+
+            m_selectionBox = new osg::MatrixTransform();
+            
+            m_selectionBox->setNodeMask(0x1);
+            m_selectionBox->addChild(geode.get());
+
+            osg::PolygonMode* polygonMode = new osg::PolygonMode(osg::PolygonMode::FRONT_AND_BACK, osg::PolygonMode::LINE);
+
+            osg::StateSet* stateSet = m_selectionBox->getOrCreateStateSet();
+
+            stateSet->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+            stateSet->setAttributeAndModes(polygonMode);
         }
 
-        this->traverse(geode);
+        return m_selectionBox.get();
     }
 
-private:
-    void replaceTexture(osg::StateSet* p_stateSet)
+    // We are going to strictly limit the occasional of picking scene objects to make
+    // sure camera manipulator operations can work. It will only be called when
+    // the user is holding the Ctrl key and releasing the left mouse button. After
+    // that, we obtain the viewer by converting the osgGA::GUIActionAdapter
+    // object, and create an intersection visitor to find a node that can possibly be
+    // picked by the mouse cursor (be aware of the setTraversalMask() method here, which
+    // will be introduced along with the setNodeMask() method).
+    // Then the resulting drawable object and its parent node path can be used
+    // to describe the world position and scale of the bounding selection box.
+    virtual bool handle(const osgGA::GUIEventAdapter& eventAdapter, osgGA::GUIActionAdapter& actionAdapter) override
     {
-        if (p_stateSet)
-        {
-            osg::Texture* p_oldTexture = dynamic_cast<osg::Texture*>(p_stateSet->getTextureAttribute(0, osg::StateAttribute::TEXTURE));
+        const osgGA::GUIEventAdapter::EventType eventType = eventAdapter.getEventType();
+        const int32_t mouseButton                         = eventAdapter.getButton();
+        const int32_t modKeyMask                          = eventAdapter.getModKeyMask();
 
-            if (p_oldTexture)
+        const bool b_buttonReleased = (eventType == osgGA::GUIEventAdapter::RELEASE);
+        const bool b_leftButton     = (mouseButton == osgGA::GUIEventAdapter::LEFT_MOUSE_BUTTON);
+        const bool b_ctrlPressed    = (modKeyMask & osgGA::GUIEventAdapter::MODKEY_CTRL);
+
+        if (!b_buttonReleased || !b_leftButton || !b_ctrlPressed)
+        {
+            return false;
+        }
+
+        m_switch->setValue(0, false);
+
+        osgViewer::Viewer* viewer = dynamic_cast<osgViewer::Viewer*>(&actionAdapter);
+
+        if (viewer)
+        {
+            const float32_t x = eventAdapter.getX();
+            const float32_t y = eventAdapter.getY();
+
+            osg::ref_ptr<osgUtil::LineSegmentIntersector> intersector = new osgUtil::LineSegmentIntersector(osgUtil::Intersector::WINDOW, x, y);
+
+            osgUtil::IntersectionVisitor intersectionVisitor(intersector.get());
+
+            intersectionVisitor.setTraversalMask(~0x1);
+
+            viewer->getCamera()->accept(intersectionVisitor);
+
+            if (intersector->containsIntersections())
             {
-                p_stateSet->setTextureAttribute(0, m_texture.get());
+                osgUtil::LineSegmentIntersector::Intersections& intersections = intersector->getIntersections();
+
+                const osgUtil::LineSegmentIntersector::Intersection& intersection = *(intersections.begin());
+
+                const osg::BoundingBox boundingBox = intersection.drawable->getBoundingBox();
+
+                const osg::Matrix localToWorldMatrix = osg::computeLocalToWorld(intersection.nodePath);
+
+                const osg::Vec3 worldCenter = boundingBox.center() * localToWorldMatrix;
+
+                const float32_t x = boundingBox.xMax() - boundingBox.xMin();
+                const float32_t y = boundingBox.yMax() - boundingBox.yMin();
+                const float32_t z = boundingBox.zMax() - boundingBox.zMin();
+
+                const osg::Matrix scale       = osg::Matrix::scale(x, y, z);
+                const osg::Matrix translation = osg::Matrix::translate(worldCenter);
+
+                const osg::Matrix worldMatrix = scale * translation;
+
+                m_selectionBox->setMatrix(worldMatrix);
+
+                m_switch->setValue(0, true);
             }
         }
+
+        return false;
     }
 
 private:
-    osg::ref_ptr<osg::Texture> m_texture;
+    osg::ref_ptr<osg::Switch>          m_switch;
+    osg::ref_ptr<osg::MatrixTransform> m_selectionBox;
 };
 
 int32_t main(int32_t argc, char** argv)
 {
-    // Load two models as scene graphs. The lz.osg model is used as the main scene,
-    // and the glider will be treated as a sub-graph that will be rendered to a texture,
-    // and presented on the surfaces of models in the main scene.
+    // We will first construct the scene graph by adding two models to the root node.
 
-    osg::ref_ptr<osg::Node> model = osgDB::readNodeFile(MODEL_DIR"lz.osg");
-    osg::ref_ptr<osg::Node> subModel= osgDB::readNodeFile(MODEL_DIR"glider.osg");
+    osg::ref_ptr<osg::Node> model0 = osgDB::readNodeFile(MODEL_DIR"cessna.osg");
+    osg::ref_ptr<osg::Node> model1 = osgDB::readNodeFile(MODEL_DIR"cow.osg");
 
-    // Create a new texture object. This differs from the previous example that creates
-    // 2D textures and applies an image to it. This time we should specify the texture size,
-    // the internal format, and other attributes by ourselves.
+    osg::ref_ptr<osg::Group> root = new osg::Group();
 
-    constexpr int32_t textureWidth  = 1024;
-    constexpr int32_t textureHeight = 1024;
+    root->addChild(model0.get());
+    root->addChild(model1.get());
 
-    osg::ref_ptr<osg::Texture2D> texture = new osg::Texture2D();
+    // We create the picking handler, and add the value of getSelectionBox()
+    // to the root node, too. This will make the selection box visible in the scene graph.
 
-    texture->setTextureSize(textureWidth, textureHeight);
-    texture->setInternalFormat(GL_RGBA);
-    texture->setFilter(osg::Texture2D::MIN_FILTER, osg::Texture2D::LINEAR);
-    texture->setFilter(osg::Texture2D::MAG_FILTER, osg::Texture2D::LINEAR);
+    osg::ref_ptr<PickHandler> pickHandler = new PickHandler();
 
-    // Use FintTextureVisitor to locate all textures used in the lz.osg model,
-    // and replace them with the new, empty texture object.
+    pickHandler->createSelectionBox();
 
-    FindTextureVisitor findTextureVisitor(texture.get());
-
-    if (model.valid())
-    {
-        model->accept(findTextureVisitor);
-    }
-
-    // Now it's time to create the render-to-textures camera. We set it up to have the
-    // same viewport as the texture size scpecified, and clear the bakcground color and
-    // buffer then starting to render sub-scene.
-
-    osg::ref_ptr<osg::Camera> camera = new osg::Camera();
-
-    camera->setViewport(0, 0, textureWidth, textureHeight);
-    camera->setClearColor(osg::Vec4(1.0f, 1.0f, 1.0f, 0.0f));
-    camera->setClearMask(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    // Force the camera to be rendered before the main scene, and use the high
-    // efficency FBO to implement the render-to-textures technique. The key statement
-    // in this example is to bind the color buffer with the texture object, whoch leads to
-    // continuous updates of the texture object, redrawing the sub-scene graph again
-    // and again.
-
-    camera->setRenderOrder(osg::Camera::PRE_RENDER);
-    camera->setRenderTargetImplementation(osg::Camera::FRAME_BUFFER_OBJECT);
-    camera->attach(osg::Camera::COLOR_BUFFER, texture.get());
-    
-    // Set the camera to be absolute, and set the loaded glider to be its sub-scene graph.
-
-    camera->setReferenceFrame(osg::Camera::ABSOLUTE_RF);
-    camera->addChild(subModel.get());
-
-    osg::ref_ptr<osgGA::TrackballManipulator> manipulator = new osgGA::TrackballManipulator();
+    root->addChild(pickHandler->getSelectionBox());
 
     osgViewer::Viewer viewer;
 
     viewer.setUpViewInWindow(0, 0, 1920, 1080, 0);
-    viewer.setSceneData(model.get());
-    viewer.setCameraManipulator(manipulator.get());
+    viewer.setSceneData(root.get());
+    viewer.addEventHandler(pickHandler.get());
 
-    // The last step is to animate the glider. We haven't learnt any animation
-    // functionalities in OSG, but we already known that the simulation loop can be
-    // customized to add some pre- and post-frame events. We will simply modify
-    // the view matrix of the render-to-textures canera during each frame, as if
-    // making the glider swing. This is done by altering the up direction of the
-    // "look-at" view matrix, as shown.
-
-    float32_t delta = 0.1f;
-    float32_t bias  = 0.0f;
-    
-    osg::Vec3 eye(0.0f, -5.0f, 5.0f);
-
-    while (!viewer.done())
-    {
-        if (bias < -1.0f)
-        {
-            delta = 0.1f;
-        }
-        else if (bias > 1.0f)
-        {
-            delta = -0.1f;
-        }
-
-        bias += delta;
-
-        camera->setViewMatrixAsLookAt(eye, osg::Vec3(), osg::Vec3(bias, 1.0f, 1.0f));
-
-        viewer.frame();
-    }
-
-    // TO DO:
-    // Model loaded into variable model is pitch black, nothing gets rendered on it!!!
-    // What happened???
-    // In the tutorial the root variable appears from nowhere...
-    // What parts of code are missing?
-
-    return 0;
+    return viewer.run();
 }

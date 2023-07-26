@@ -108,6 +108,17 @@
         "singlescreen": "cpp",
         "compositeviewer": "cpp",
         "displaysettings": "cpp",
-        "texture": "cpp"
+        "texture": "cpp",
+        "config": "cpp",
+        "tdtiles": "cpp",
+        "scenegraphcallback": "cpp",
+        "imageutils": "cpp",
+        "guieventadapter": "cpp",
+        "linesegmentintersector": "cpp",
+        "shapedrawable": "cpp",
+        "switch": "cpp",
+        "valuemap": "cpp",
+        "guieventhandler": "cpp",
+        "eventhandler": "cpp"
     }
 }
