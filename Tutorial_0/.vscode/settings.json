@@ -119,6 +119,9 @@
         "switch": "cpp",
         "valuemap": "cpp",
         "guieventhandler": "cpp",
-        "eventhandler": "cpp"
+        "eventhandler": "cpp",
+        "cameramanipulator": "cpp",
+        "earthmanipulator": "cpp",
+        "viewpoint": "cpp"
     }
 }
