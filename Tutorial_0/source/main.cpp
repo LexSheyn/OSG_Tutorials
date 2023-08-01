@@ -17,45 +17,114 @@
 #include <osgGA/GUIEventHandler>
 #include <osgViewer/Viewer>
 
-// TO DO
+// Our task is to take control of cessna model with some keys. To handle these user
+// events, we have to declare a ModelController class, which is derived from the
+// osgGA::GUIEventHandler base class, and override the handle() method to
+// make sure that all user events are pressed in as an osgGA::GUIEventAdapter
+// osbject. The model pointer is also included in the handler class, otherwise
+// there is no way to tell which model is going to be controlled.
 
-class KeyEventHandler : public osgGA::GUIEventHandler
+class ModelController : public osgGA::GUIEventHandler
 {
 public:
 
-    KeyEventHandler()
+    ModelController()
     {}
 
-    KeyEventHandler(const KeyEventHandler& copy, const osg::CopyOp& copyOp = osg::CopyOp::SHALLOW_COPY)
-    : osgGA::GUIEventHandler(copy, copyOp)
-    {}
-
-    META_Object(test, KeyEventHandler);
-
-    // osgGA::GUIEventHandler.
-
-    virtual bool handle(osgGA::Event* event, osg::Object* object, osg::NodeVisitor* nodeVisitor) override
+    void setTransform(osg::MatrixTransform* transform)
     {
-        return osgGA::GUIEventHandler::handle(event, object, nodeVisitor);
+        m_transform = transform;
     }
 
-    virtual bool handle(const osgGA::GUIEventAdapter& eventAdapter, osgGA::GUIActionAdapter& actionAdapter, osg::Object* object, osg::NodeVisitor* nodeVisitor) override
+    const osg::MatrixTransform* getTransform() const
     {
-        return osgGA::GUIEventHandler::handle(eventAdapter, actionAdapter, object, nodeVisitor);
+        return m_transform.get();
     }
 
+    // In the implementation of the handle() method, we will modify the Euler
+    // angles of the member variable m_transform, which can be a transformation node
+    // reresenting a cessna or other models. The character keys W, S, A, and D can
+    // easily describe the heading and pitch rotations of the aircraft via a common
+    // KEYDOWN event. Of course, function keys and navigation keys, including
+    // KEY_Left, KEY_Right, and so on, are also available for use here.
     virtual bool handle(const osgGA::GUIEventAdapter& eventAdapter, osgGA::GUIActionAdapter& actionAdapter) override
     {
-        return osgGA::GUIEventHandler::handle(eventAdapter, actionAdapter);
+        osg::Matrix matrix = m_transform->getMatrix();
+
+        const osgGA::GUIEventAdapter::EventType eventType = eventAdapter.getEventType();
+
+        if (eventType == osgGA::GUIEventAdapter::KEYDOWN)
+        {
+            const int32_t key = eventAdapter.getKey();
+
+            if (key == 'w' || key == 'W')
+            {
+                matrix *= osg::Matrix::rotate(-0.1f, osg::X_AXIS);
+            }
+
+            if (key == 's' || key == 'S')
+            {
+                matrix *= osg::Matrix::rotate(0.1f, osg::X_AXIS);
+            }
+
+            if (key == 'a' || key == 'A')
+            {
+                matrix *= osg::Matrix::rotate(-0.1f, osg::Z_AXIS);
+            }
+
+            if (key == 'd' || key == 'D')
+            {
+                matrix *= osg::Matrix::rotate(0.1f, osg::Z_AXIS);
+            }
+
+            m_transform->setMatrix(matrix);
+        }
+        
+        return false;
     }
 
 protected:
 
-    virtual ~KeyEventHandler()
+    virtual ~ModelController() override
     {}
+
+    osg::ref_ptr<osg::MatrixTransform> m_transform;
 };
 
 int32_t main(int32_t argc, char** argv)
 {
-    return 0;
+    osg::ref_ptr<osg::Node> model = osgDB::readNodeFile(MODEL_DIR"cessna.osg");
+
+    osg::ref_ptr<osg::MatrixTransform> matrixTransform = new osg::MatrixTransform();
+
+    matrixTransform->addChild(model.get());
+
+    osg::ref_ptr<osg::Group> root = new osg::Group();
+
+    root->addChild(matrixTransform.get());
+
+    osg::ref_ptr<ModelController> modelController = new ModelController();
+
+    modelController->setTransform(matrixTransform.get());
+
+    // We don's want the camera manipulator to work in this example, because it may also
+    // affect the model-view matrix of the viewer when using keyboard and mouse,
+    // and confuse the result of handling GUI events. Therefore, in addition to adding
+    // the created event handler, we will prevent the main camera from receiving any
+    // user event with the setAllowEventFocus() method, and set a suitable view
+    // matrix by ourselves (because manipulator can't contact the camera now).
+
+    osgViewer::Viewer viewer;
+
+    viewer.setUpViewInWindow(0, 0, 1920, 1080, 0);
+    viewer.addEventHandler(modelController.get());
+
+    osg::Camera* camera = viewer.getCamera();
+
+    camera->setViewMatrixAsLookAt(osg::Vec3(0.0f, -100.0f, 0.0f), osg::Vec3(), osg::Z_AXIS);
+    camera->setAllowEventFocus(false);
+
+    viewer.setSceneData(root.get());
+
+    return viewer.run();
 }
